@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elk-persistent-volume
+  labels:
+    app: elasticsearch
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi #Change as you need
+  storageClassName: standard #Give you Storage class name here
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elk-deployment
+  labels:
+     app: elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+        - name: elk-container
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.11.1
+          imagePullPolicy: Always
+          ports:
+            - name: rest
+              containerPort: 9200
+          volumeMounts:
+            - name: container-volume
+              mountPath: /usr/share/elasticsearch/data
+          env:
+            - name: discovery.type
+              value: "single-node"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: 1
+            limits:
+              memory: "1024Mi"
+              cpu: 1
+      initContainers:
+        - name: permission-fix
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: container-volume
+              mountPath: /usr/share/elasticsearch/data        
+
+        - name: vm-max-increase
+          image: busybox
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+
+        - name: fd-ulimit-increase
+          image: busybox
+          command: ["sh", "-c", "ulimit -n 65536"]
+          securityContext:
+            privileged: true
+
+      volumes:
+        - name: container-volume
+          persistentVolumeClaim:
+            claimName: elk-persistent-volume
+
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: elk-service
+  labels:
+      app: elasticsearch
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9200
+      targetPort: rest
+      protocol: TCP
+      name: rest
+  selector:
+     app: elasticsearch
