@@ -1,0 +1,1 @@
+# elasticSearch-kibana-single-node
